@@ -1,0 +1,3 @@
+// Attendance components — CameraModal, LivenessIndicator, AttendanceStatus
+// Full implementation in Phase 3
+export {};

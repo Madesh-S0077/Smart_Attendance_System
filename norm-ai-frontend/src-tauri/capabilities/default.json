@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/effects.schema.json",
+  "identifier": "default-capabilities",
+  "description": "Default permissions for Norm AI application",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:default",
+    "shell:allow-open",
+    "store:default"
+  ]
+}

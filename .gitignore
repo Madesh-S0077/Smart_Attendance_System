@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+.venv/
+env/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+
+# Frontend Build
+norm-ai-frontend/dist/
+norm-ai-frontend/dist-ssr/
+norm-ai-frontend/src-tauri/target/
+
+# AI Models (Do not upload to Git, files exceed GitHub 100MB limit)
+norm-ai-frontend/src-tauri/sidecar/models/buffalo_l/
+norm-ai-frontend/src-tauri/sidecar/models/minifas_1m.onnx
+
+# IDEs and Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS Files
+.DS_Store
+Thumbs.db
