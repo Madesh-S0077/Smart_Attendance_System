@@ -36,65 +36,77 @@ async def verify_attendance(
     return ResponseEnvelope(success=True, data=res)
 
 
-@router.get("/status", response_model=ResponseEnvelope[AttendanceStatusResponse])
+@router.get("/status", response_model=ResponseEnvelope[list[AttendanceStatusResponse]])
 async def get_status(
-    date: date,
     current_user: Annotated[User, Depends(role_required(UserRole.student))],
     db: Annotated[AsyncSession, Depends(get_db)],
-) -> ResponseEnvelope[AttendanceStatusResponse]:
-    # Check Sunday
-    if date.weekday() == 6:
-        return ResponseEnvelope(
-            success=True,
-            data=AttendanceStatusResponse(
-                status="Sunday", slot_name="Sunday Holiday"
-            ),
-        )
+) -> ResponseEnvelope[list[AttendanceStatusResponse]]:
+    today = date.today()
 
-    # Check Holiday
-    holiday_result = await db.execute(select(Holiday).where(Holiday.date == date))
+    # Check Holiday first
+    holiday_result = await db.execute(select(Holiday).where(Holiday.date == today))
     holiday = holiday_result.scalar_one_or_none()
-    if holiday:
-        return ResponseEnvelope(
-            success=True,
-            data=AttendanceStatusResponse(
-                status="holiday", slot_name=holiday.reason or "Holiday"
-            ),
-        )
 
-    # Check TimeSlot
-    slot_result = await db.execute(select(TimeSlot).where(TimeSlot.date == date))
+    # Fetch today's time slot
+    slot_result = await db.execute(select(TimeSlot).where(TimeSlot.date == today))
     slot = slot_result.scalar_one_or_none()
-    if not slot:
+
+    # No slot and no holiday — return empty list (frontend shows "No slots scheduled")
+    if not slot and not holiday:
+        return ResponseEnvelope(success=True, data=[])
+
+    # Build a synthetic slot for holidays if no real slot exists
+    if holiday and not slot:
+        from uuid import uuid4
+        fake_slot = {
+            "id": str(uuid4()),
+            "slot_name": holiday.reason or "Holiday",
+            "start_time": "00:00:00",
+            "end_time": "23:59:00",
+            "date": str(today),
+        }
         return ResponseEnvelope(
             success=True,
-            data=AttendanceStatusResponse(
-                status="not_marked", slot_name="No Slot Configured"
-            ),
+            data=[AttendanceStatusResponse(
+                slot=fake_slot,
+                status="present",
+                marked_at=None,
+                is_holiday=True,
+                holiday_reason=holiday.reason or "RMKEC Academic Holiday",
+            )],
         )
 
-    # Check Log
+    # Normal slot day — check attendance log
     log_result = await db.execute(
         select(AttendanceLog).where(
             AttendanceLog.student_id == current_user.id,
             AttendanceLog.slot_id == slot.id,
-            AttendanceLog.date == date,
+            AttendanceLog.date == today,
         )
     )
     log = log_result.scalar_one_or_none()
-
-    status_str = log.status.value if log else "absent"
+    status_str = log.status.value if log else "pending"
     marked_at = log.marked_at if log else None
+
+    slot_dict = {
+        "id": str(slot.id),
+        "slot_name": slot.slot_name,
+        "start_time": str(slot.start_time),
+        "end_time": str(slot.end_time),
+        "date": str(slot.date),
+    }
 
     return ResponseEnvelope(
         success=True,
-        data=AttendanceStatusResponse(
-            slot_id=slot.id,
-            slot_name=slot.slot_name,
+        data=[AttendanceStatusResponse(
+            slot=slot_dict,
             status=status_str,
             marked_at=marked_at,
-        ),
+            is_holiday=bool(holiday),
+            holiday_reason=holiday.reason if holiday else None,
+        )],
     )
+
 
 
 @router.get("/history", response_model=ResponseEnvelope[list[AttendanceHistoryItem]])

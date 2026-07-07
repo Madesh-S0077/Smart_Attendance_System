@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { useAuthStore } from "./store/authStore";
+import { useAuthStore, initAuthStore } from "./store/authStore";
 import { UserRole } from "./types";
 
 // Pages
@@ -20,11 +20,21 @@ const isTauriEnv =
 function ProtectedRoute({
   children,
   allowedRole,
+  isHydrated,
 }: {
   children: React.ReactNode;
   allowedRole: UserRole;
+  isHydrated: boolean;
 }) {
   const { isAuthenticated, user } = useAuthStore();
+  // Wait for auth store to hydrate before making any redirect decisions
+  if (!isHydrated) {
+    return (
+      <div className="min-h-screen bg-[#F7F8FC] flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-[#5B5FEF] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (user?.role !== allowedRole) return <Navigate to="/login" replace />;
   return <>{children}</>;
@@ -33,6 +43,12 @@ function ProtectedRoute({
 export default function App() {
   const [sidecarReady, setSidecarReady] = useState(!isTauriEnv);
   const [sidecarError, setSidecarError] = useState<string | null>(null);
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  // Hydrate auth store from persistent storage on first load
+  useEffect(() => {
+    initAuthStore().finally(() => setIsHydrated(true));
+  }, []);
 
   useEffect(() => {
     if (!isTauriEnv) return;
@@ -112,7 +128,7 @@ export default function App() {
         <Route
           path="/student/*"
           element={
-            <ProtectedRoute allowedRole="student">
+            <ProtectedRoute allowedRole="student" isHydrated={isHydrated}>
               <StudentDashboard />
             </ProtectedRoute>
           }
@@ -122,7 +138,7 @@ export default function App() {
         <Route
           path="/teacher/*"
           element={
-            <ProtectedRoute allowedRole="teacher">
+            <ProtectedRoute allowedRole="teacher" isHydrated={isHydrated}>
               <TeacherDashboard />
             </ProtectedRoute>
           }
@@ -132,7 +148,7 @@ export default function App() {
         <Route
           path="/admin/*"
           element={
-            <ProtectedRoute allowedRole="admin">
+            <ProtectedRoute allowedRole="admin" isHydrated={isHydrated}>
               <AdminDashboard />
             </ProtectedRoute>
           }

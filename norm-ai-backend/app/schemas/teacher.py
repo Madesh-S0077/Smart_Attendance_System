@@ -8,6 +8,19 @@ class TeacherResponse(BaseModel):
     id: UUID
     name: str
     department: str
+    position: str
+
+    class Config:
+        from_attributes = True
+
+
+class TeacherMeResponse(BaseModel):
+    """Full profile returned for the logged-in teacher."""
+    id: UUID
+    name: str
+    department: str
+    position: str
+    email: str
 
     class Config:
         from_attributes = True
@@ -19,4 +32,5 @@ class TeacherStudentAttendanceResponse(BaseModel):
     register_number: str
     section: str
     today_status: str  # present / absent / not_marked
-    marked_at: Optional[datetime] = None  # we will import datetime in file if needed, let's use string or datetime
+    marked_at: Optional[datetime] = None
+

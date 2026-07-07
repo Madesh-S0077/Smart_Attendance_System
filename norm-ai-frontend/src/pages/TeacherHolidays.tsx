@@ -147,7 +147,7 @@ export default function TeacherHolidays() {
       {/* Toast Alert */}
       {toastMessage && (
         <div
-          className={`fixed top-6 right-6 z-50 p-4 rounded-xl border shadow-xl flex items-center gap-2 font-bold text-sm transition-all duration-300 animate-slide-in ${
+          className={`fixed top-6 right-6 z-[100] p-4 rounded-xl border shadow-xl flex items-center gap-2 font-bold text-sm transition-all duration-300 animate-slide-in ${
             toastMessage.isError
               ? "bg-red-50 border-red-200 text-red-600"
               : "bg-green-50 border-green-200 text-green-600"
@@ -251,7 +251,7 @@ export default function TeacherHolidays() {
         const activeHoliday = holidays.find((h) => h.date === dateStr);
 
         return (
-          <div className="fixed inset-0 bg-[#1E293B]/70 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="fixed inset-0 bg-[#1E293B]/60 flex items-center justify-center p-4 z-50 animate-fade-in">
             <div className="bg-white w-full max-w-[380px] rounded-3xl shadow-2xl p-6 relative border border-[#E2E8F0]">
               {/* Close X */}
               <button

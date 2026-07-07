@@ -11,9 +11,32 @@ from app.models.student import Student
 from app.models.teacher import Teacher
 from app.models.user import User, UserRole
 from app.schemas.envelope import ResponseEnvelope
-from app.schemas.teacher import TeacherResponse, TeacherStudentAttendanceResponse
+from app.schemas.teacher import TeacherResponse, TeacherStudentAttendanceResponse, TeacherMeResponse
 
 router = APIRouter()
+
+
+@router.get("/me", response_model=ResponseEnvelope[TeacherMeResponse])
+async def get_me(
+    current_user: Annotated[User, Depends(role_required(UserRole.teacher))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> ResponseEnvelope[TeacherMeResponse]:
+    """Return the logged-in teacher's own profile details."""
+    result = await db.execute(select(Teacher).where(Teacher.id == current_user.id))
+    teacher = result.scalar_one_or_none()
+    if not teacher:
+        from fastapi import HTTPException, status
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Teacher profile not found.")
+    return ResponseEnvelope(
+        success=True,
+        data=TeacherMeResponse(
+            id=teacher.id,
+            name=teacher.name,
+            department=teacher.department,
+            position=teacher.position,
+            email=current_user.email,
+        ),
+    )
 
 
 @router.get("/", response_model=ResponseEnvelope[list[TeacherResponse]])
@@ -21,6 +44,16 @@ async def get_teachers(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ResponseEnvelope[list[TeacherResponse]]:
+    result = await db.execute(select(Teacher).order_by(Teacher.name.asc()))
+    teachers = result.scalars().all()
+    return ResponseEnvelope(success=True, data=teachers)
+
+
+@router.get("/list", response_model=ResponseEnvelope[list[TeacherResponse]])
+async def list_teachers_public(
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> ResponseEnvelope[list[TeacherResponse]]:
+    """Public endpoint — no auth required. Used by student registration to populate counsellor dropdown."""
     result = await db.execute(select(Teacher).order_by(Teacher.name.asc()))
     teachers = result.scalars().all()
     return ResponseEnvelope(success=True, data=teachers)

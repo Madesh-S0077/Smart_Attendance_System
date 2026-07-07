@@ -24,11 +24,20 @@ class AttendanceVerifyResponse(BaseModel):
     similarity: float
 
 
+class SlotInfo(BaseModel):
+    id: str
+    slot_name: str
+    start_time: str
+    end_time: str
+    date: str
+
+
 class AttendanceStatusResponse(BaseModel):
-    slot_id: Optional[UUID] = None
-    slot_name: Optional[str] = None
-    status: str  # present / absent / not_marked / holiday / Sunday
+    slot: SlotInfo
+    status: str  # present / absent / pending
     marked_at: Optional[datetime] = None
+    is_holiday: bool = False
+    holiday_reason: Optional[str] = None
 
 
 class AttendanceHistoryItem(BaseModel):

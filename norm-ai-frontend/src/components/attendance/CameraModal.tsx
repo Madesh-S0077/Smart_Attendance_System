@@ -148,10 +148,10 @@ export default function CameraModal({ isOpen, onClose, slotId, slotName }: Camer
   // Submit embedding to backend `/api/attendance/verify`
   const verifyIdentity = async (embedding: number[], score: number) => {
     try {
+      const todayStr = new Date().toISOString().split("T")[0];
       const response = await apiClient.post<ApiResponse<any>>("/api/attendance/verify", {
-        embedding,
-        liveness_score: score,
-        slot_id: slotId,
+        face_embedding: embedding,
+        date: todayStr,
       });
 
       const res = response.data;

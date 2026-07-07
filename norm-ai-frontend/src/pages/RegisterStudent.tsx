@@ -76,11 +76,11 @@ export default function RegisterStudent() {
     setPassValue(passwordField || "");
   }, [passwordField]);
 
-  // Fetch teachers for counsellor select
+  // Fetch teachers for counsellor select (public endpoint — no token needed)
   useEffect(() => {
     const fetchTeachers = async () => {
       try {
-        const response = await apiClient.get<ApiResponse<TeacherDropdownItem[]>>("/api/teachers/");
+        const response = await apiClient.get<ApiResponse<TeacherDropdownItem[]>>("/api/teachers/list");
         if (response.data.success && response.data.data) {
           setTeachers(response.data.data);
         }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import apiClient from "../api/client";
 import { ApiResponse } from "../types";
@@ -12,12 +12,15 @@ export function useGeofence() {
   const [isOnCampus, setIsOnCampus] = useState(false);
   const [lastChecked, setLastChecked] = useState<Date>(new Date());
   const [allowedSsids, setAllowedSsids] = useState<string[]>(["RMKEC", "RMKEC2G"]);
+  // Use a ref so checkWifi always reads latest allowed list (avoids stale closure)
+  const allowedSsidsRef = useRef<string[]>(["RMKEC", "RMKEC2G"]);
 
   const fetchAllowedSsids = async () => {
     try {
       const response = await apiClient.get<ApiResponse<string[]>>("/api/admin/ssid-config");
-      if (response.data.success && response.data.data) {
+      if (response.data.success && response.data.data && response.data.data.length > 0) {
         setAllowedSsids(response.data.data);
+        allowedSsidsRef.current = response.data.data;
       }
     } catch (err) {
       console.warn("Failed to fetch custom SSID config, using defaults:", err);
@@ -34,11 +37,13 @@ export function useGeofence() {
         console.error("Failed to fetch SSID via Tauri command:", err);
       }
     } else {
+      // Browser/dev mode: real Wi-Fi SSID requires Tauri native OS access.
+      // Hardcoded to "RMKEC" for testing — will use Tauri invoke() in desktop build.
       currentSsid = "RMKEC";
     }
 
     setSsid(currentSsid);
-    setIsOnCampus(currentSsid ? allowedSsids.includes(currentSsid) : false);
+    setIsOnCampus(currentSsid ? allowedSsidsRef.current.includes(currentSsid) : false);
     setLastChecked(new Date());
   };
 
