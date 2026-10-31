@@ -46,13 +46,13 @@ The backend handles the API, authentication, and database interactions.
    ```bash
    pip install -r requirements.txt
    ```
-4. Create a `.env` file in the `norm-ai-backend` folder:
-   ```env
-   DATABASE_URL=postgresql+asyncpg://norm_admin:NormPass123!@localhost:5432/norm_ai_db
-   SECRET_KEY=generate_a_random_64_character_string_here_for_development
-   ALGORITHM=HS256
-   ACCESS_TOKEN_EXPIRE_MINUTES=1440
+4. Copy the example env file and set a real secret (credentials already match `docker-compose.yml`):
+   ```bash
+   copy .env.example .env      # Mac/Linux: cp .env.example .env
    ```
+   Then replace `SECRET_KEY` with a random string of at least 64 characters, e.g.
+   `python -c "import secrets; print(secrets.token_hex(32))"`.
+   Tokens: access = 15 min, refresh = 7 days.
 5. Run database migrations to create the tables:
    ```bash
    alembic upgrade head
@@ -68,32 +68,12 @@ The backend handles the API, authentication, and database interactions.
 The Tauri frontend communicates with a local Python sidecar for face detection and liveness checking (anti-spoofing).
 
 1. The sidecar relies on the **backend's virtual environment**, so ensure it is activated in your terminal.
-2. **Download the Face Models:** Run this script once to download the required `buffalo_l` models and copy them to the sidecar directory:
+2. **Download the AI models** (InsightFace `buffalo_l` + MiniFASNet ONNX) with one command from the repo root:
    ```bash
-   python -c "
-   from insightface.app import FaceAnalysis
-   import shutil, pathlib
-
-   print('Downloading buffalo_l...')
-   app = FaceAnalysis(
-       name='buffalo_l',
-       allowed_modules=['detection', 'recognition'],
-       providers=['CPUExecutionProvider']
-   )
-   app.prepare(ctx_id=-1, det_size=(640, 640))
-
-   # Copy into sidecar/models/buffalo_l/
-   src = pathlib.Path.home() / '.insightface' / 'models' / 'buffalo_l'
-   dst = pathlib.Path(r'../norm-ai-frontend/src-tauri/sidecar/models/buffalo_l')
-   dst.mkdir(parents=True, exist_ok=True)
-   shutil.copytree(str(src), str(dst), dirs_exist_ok=True)
-   print('Models copied to sidecar successfully!')
-   "
+   pip install -r norm-ai-frontend/src-tauri/sidecar/requirements-sidecar.txt
+   python scripts/download_models.py
    ```
-3. **Download the Anti-Spoofing Model:** 
-   - Download `2.7_80x80_MiniFASNetV1SE.onnx` from the [MiniFASNet repository](https://github.com/minivision-ai/Silent-Face-Anti-Spoofing).
-   - Rename it to `minifas_1m.onnx`.
-   - Place it inside `norm-ai-frontend/src-tauri/sidecar/models/`.
+   This places `buffalo_l/` and `minifas_1m.onnx` in `norm-ai-frontend/src-tauri/sidecar/models/`.
 
 ---
 
