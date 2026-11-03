@@ -7,13 +7,13 @@ Only accessible from the Tauri webview — never exposed to the network.
 Pipeline per /analyze request:
   1. Decode base64 JPEG → OpenCV BGR frame
   2. Run InsightFace buffalo_l — detect faces + extract 512-dim embedding
-  3. If 1 face found → run MiniFAS 1M anti-spoofing at 2 scales (1.0x, 2.7x)
-  4. Fuse liveness scores → threshold > 0.85
+  3. If 1 face found → run MiniFASNetV2 anti-spoofing on the 2.7x crop
+  4. P(live) must exceed the threshold (default 0.85)
   5. If live → return L2-normalized 512-dim embedding + metadata
 
 CRITICAL RULES (never violate):
   - CPU-only inference. CUDA provider MUST NOT be present.
-  - Liveness threshold: fused_score > 0.85 (multi-scale MiniFAS fusion)
+  - Liveness threshold: P(live) > 0.85 (env LIVENESS_THRESHOLD)
   - Exactly 1 face must be visible — reject 0 or 2+ faces
   - Face embedding is always L2-normalized before returning
 """
@@ -59,7 +59,9 @@ MODELS_DIR = BASE_DIR / "models"
 MINIFAS_PATH = MODELS_DIR / "minifas_1m.onnx"
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-LIVENESS_THRESHOLD: float = 0.85      # multi-scale MiniFAS fusion threshold
+LIVENESS_THRESHOLD: float = float(os.environ.get("LIVENESS_THRESHOLD", "0.85"))
+# Output class order of Silent-Face MiniFASNet: [spoof, live, spoof]
+LIVE_CLASS_INDEX: int = int(os.environ.get("LIVE_CLASS_INDEX", "1"))
 EMBEDDING_DIM: int = 512              # InsightFace buffalo_l output dim (w600k_r50.onnx)
 HOST: str = "127.0.0.1"              # sidecar-only, never 0.0.0.0
 PORT: int = 8765
@@ -211,98 +213,83 @@ def _crop_face_region(
     scale: float,
 ) -> np.ndarray:
     """
-    Crop a scaled bounding box region and resize to MiniFAS input size (80×80).
+    Crop the face region the way Silent-Face-Anti-Spoofing (CropImage) does.
 
-    Args:
-        img:   Full BGR frame.
-        bbox:  [x1, y1, x2, y2] from InsightFace detector.
-        scale: Expansion factor (1.0 = tight crop, 2.7 = wide context).
-
-    Returns:
-        80×80 BGR crop ready for MiniFAS inference.
+    The box is expanded by ``scale`` around its centre (clamped so it fits in the
+    frame), shifted back inside the image rather than clipped (clipping would
+    distort the aspect ratio), then resized to 80x80.
     """
+    src_h, src_w = img.shape[:2]
     x1, y1, x2, y2 = bbox
-    cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
-    w = (x2 - x1) * scale
-    h = (y2 - y1) * scale
+    box_w, box_h = max(x2 - x1, 1.0), max(y2 - y1, 1.0)
 
-    nx1 = max(0, int(cx - w / 2))
-    ny1 = max(0, int(cy - h / 2))
-    nx2 = min(img.shape[1], int(cx + w / 2))
-    ny2 = min(img.shape[0], int(cy + h / 2))
+    scale = min((src_h - 1) / box_h, (src_w - 1) / box_w, scale)
+    new_w, new_h = box_w * scale, box_h * scale
+    cx, cy = x1 + box_w / 2.0, y1 + box_h / 2.0
 
-    crop = img[ny1:ny2, nx1:nx2]
+    lx, ly = cx - new_w / 2.0, cy - new_h / 2.0
+    rx, ry = cx + new_w / 2.0, cy + new_h / 2.0
+    if lx < 0:
+        rx -= lx
+        lx = 0
+    if ly < 0:
+        ry -= ly
+        ly = 0
+    if rx > src_w - 1:
+        lx -= rx - (src_w - 1)
+        rx = src_w - 1
+    if ry > src_h - 1:
+        ly -= ry - (src_h - 1)
+        ry = src_h - 1
+
+    crop = img[max(0, int(ly)): int(ry) + 1, max(0, int(lx)): int(rx) + 1]
     if crop.size == 0:
-        # Fallback: use the full frame if bbox is degenerate
         crop = img
     return cv2.resize(crop, MINIFAS_INPUT_SIZE)
 
 
 def _run_minifas_single(crop: np.ndarray) -> float:
     """
-    Run one MiniFAS forward pass on an 80×80 BGR crop.
+    Run one MiniFAS forward pass on an 80x80 BGR crop and return P(live).
 
-    MiniFAS outputs [batch, 3] softmax logits: [background, spoof, live].
-    We return the 'live' class probability (index 2).
+    Matches the upstream preprocessing: raw 0-255 BGR floats (no /255, no mean
+    subtraction), NCHW. Output is 3-class logits; softmax then take LIVE_CLASS_INDEX.
     """
-    # Normalise to [0, 1] and convert HWC → CHW → NCHW
-    inp = crop.astype(np.float32) / 255.0
-    inp = np.transpose(inp, (2, 0, 1))[np.newaxis, ...]  # (1, 3, 80, 80)
-
-    # Use the model's actual input name (typically 'input' for MiniFAS 1M)
+    inp = np.transpose(crop.astype(np.float32), (2, 0, 1))[np.newaxis, ...]  # (1, 3, 80, 80)
     input_name = _minifas_session.get_inputs()[0].name
     raw_output = _minifas_session.run(None, {input_name: inp})[0]  # (1, 3)
-
-    scores = _softmax(raw_output[0])  # (3,) — [background, spoof, live]
-    live_prob = float(scores[2])
-    return live_prob
+    scores = _softmax(raw_output[0])
+    return float(scores[LIVE_CLASS_INDEX])
 
 
 def predict_liveness(img_bgr: np.ndarray, bbox: list[float]) -> dict:
     """
-    Multi-scale MiniFAS anti-spoofing fusion.
+    MiniFASNetV2 anti-spoofing at the model's native 2.7x crop scale.
 
-    Runs the model at two scales:
-      - 1.0× (tight): captures fine texture / screen artefacts
-      - 2.7× (wide):  captures context / depth cues
-
-    Averages both scores. Returns is_live=True only if fused_score > 0.85.
-
-    Args:
-        img_bgr: Full BGR frame from webcam.
-        bbox:    [x1, y1, x2, y2] face bounding box from InsightFace.
+    The ONNX model we ship (MiniFASNetV2) was trained for the 2.7x crop only, so we
+    run a single pass. Returns is_live=True only if P(live) > LIVENESS_THRESHOLD.
+    Fails closed (is_live=False) if the model file is missing.
 
     Returns:
-        dict with keys: is_live, liveness_score, score_1x, score_27x
+        dict with keys: is_live, liveness_score, score_27x
     """
     if _minifas_session is None:
-        # MiniFAS not downloaded yet — fail open with warning
         logger.warning(
-            "MiniFAS model not loaded. Skipping liveness check (dev mode). "
-            "Download the model to enable anti-spoofing."
+            "MiniFAS model not loaded - failing closed (is_live=False). "
+            "Run scripts/download_models.py to enable anti-spoofing."
         )
         return {
             "liveness_score": 0.0,
             "is_live": False,
-            "score_1x": 0.0,
             "score_27x": 0.0,
-            "warning": "MiniFAS model not found. Download minifas_1m.onnx to sidecar/models/",
+            "warning": "MiniFAS model not found. Run scripts/download_models.py",
         }
 
-    crop_1x = _crop_face_region(img_bgr, bbox, scale=1.0)
-    crop_27x = _crop_face_region(img_bgr, bbox, scale=2.7)
-
-    score_1x = _run_minifas_single(crop_1x)
-    score_27x = _run_minifas_single(crop_27x)
-
-    fused_score = (score_1x + score_27x) / 2.0
-    is_live = fused_score > LIVENESS_THRESHOLD
-
+    score = _run_minifas_single(_crop_face_region(img_bgr, bbox, scale=2.7))
     return {
-        "liveness_score": round(fused_score, 4),
-        "is_live": is_live,
-        "score_1x": round(score_1x, 4),
-        "score_27x": round(score_27x, 4),
+        "liveness_score": round(score, 4),
+        "is_live": score > LIVENESS_THRESHOLD,
+        "score_27x": round(score, 4),
     }
 
 
@@ -509,9 +496,7 @@ async def analyze(body: AnalyzeRequest) -> AnalyzeResponse:
     is_live: bool = liveness["is_live"]
 
     logger.info(
-        "Liveness | score_1x=%.4f score_27x=%.4f fused=%.4f is_live=%s",
-        liveness["score_1x"],
-        liveness["score_27x"],
+        "Liveness | p_live=%.4f is_live=%s",
         liveness_score,
         is_live,
     )

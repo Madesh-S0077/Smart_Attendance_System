@@ -30,3 +30,6 @@ norm-ai-frontend/src-tauri/sidecar/models/minifas_1m.onnx
 # OS Files
 .DS_Store
 Thumbs.db
+.venv-sidecar/
+norm-ai-frontend/src-tauri/sidecar/ai_pipeline-*.exe
+norm-ai-frontend/src-tauri/gen/

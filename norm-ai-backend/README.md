@@ -56,9 +56,7 @@ The REST API server will run at: `http://localhost:8000`
 An administrator user must be seeded in the database before first use.
 1. Run the seed script:
    ```bash
-   python app/seed_admin.py
-   # Or run via python command:
-   # python -m app.seed_admin
+   python -m app.seed_admin
    ```
 2. This creates the default administrator login:
    - **Email**: `admin@rmkec.ac.in`

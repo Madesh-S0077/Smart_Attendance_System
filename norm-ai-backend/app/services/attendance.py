@@ -54,7 +54,11 @@ class AttendanceService:
         if not (slot.start_time <= current_time <= slot.end_time):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Attendance window is 8:30 AM – 10:00 AM.",
+                detail=(
+                    "Attendance window is "
+                    f"{slot.start_time.strftime('%I:%M %p').lstrip('0')} – "
+                    f"{slot.end_time.strftime('%I:%M %p').lstrip('0')}."
+                ),
             )
 
         # 5. Check if attendance already marked present
