@@ -1,3 +1,4 @@
+import datetime as dt
 from datetime import date, time
 from typing import Optional
 from uuid import UUID
@@ -16,4 +17,4 @@ class TimeSlotResponse(BaseModel):
 
 
 class TimeSlotGenerateRequest(BaseModel):
-    date: Optional[date] = None
+    date: Optional[dt.date] = None

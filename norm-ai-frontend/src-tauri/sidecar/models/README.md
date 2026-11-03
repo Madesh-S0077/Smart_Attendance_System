@@ -1,9 +1,9 @@
-// Models directory — downloaded AI model weights go here
-// buffalo_m/ — InsightFace buffalo_m model
-// MiniFASNet_V1SE.onnx — Silent Face Anti-Spoofing MiniFAS 1M variant
-//
-// Run this to download InsightFace models:
-//   python -c "from insightface.app import FaceAnalysis; FaceAnalysis(name='buffalo_m').prepare(ctx_id=-1)"
-//
-// MiniFAS model source:
-//   https://github.com/minivision-ai/Silent-Face-Anti-Spoofing
+Models directory - downloaded AI model weights go here (gitignored).
+
+  buffalo_l/        InsightFace buffalo_l (SCRFD detection + ArcFace recognition)
+  minifas_1m.onnx   Silent-Face-Anti-Spoofing MiniFASNetV2 ONNX export (2.7x crop, 80x80; class order [spoof, live, spoof])
+
+Download everything with:
+  python scripts/download_models.py
+
+MiniFAS source: https://github.com/minivision-ai/Silent-Face-Anti-Spoofing

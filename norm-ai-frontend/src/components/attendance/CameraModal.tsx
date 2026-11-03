@@ -14,7 +14,7 @@ interface CameraModalProps {
 
 type ModalState = "INIT" | "LIVENESS_CHECK" | "PROCESSING" | "SUCCESS" | "ERROR";
 
-export default function CameraModal({ isOpen, onClose, slotId, slotName }: CameraModalProps) {
+export default function CameraModal({ isOpen, onClose, slotName }: CameraModalProps) {
   const [modalState, setModalState] = useState<ModalState>("INIT");
   const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
   const [livenessScore, setLivenessScore] = useState(0);
@@ -137,7 +137,7 @@ export default function CameraModal({ isOpen, onClose, slotId, slotName }: Camer
           setPhotoDataUrl(dataUrl);
           cleanUp();
           setModalState("PROCESSING");
-          verifyIdentity(res.embedding, res.liveness_score);
+          verifyIdentity(res.embedding);
         }
       } catch (err) {
         console.error("Failed to fetch liveness checks:", err);
@@ -146,7 +146,7 @@ export default function CameraModal({ isOpen, onClose, slotId, slotName }: Camer
   };
 
   // Submit embedding to backend `/api/attendance/verify`
-  const verifyIdentity = async (embedding: number[], score: number) => {
+  const verifyIdentity = async (embedding: number[]) => {
     try {
       const todayStr = new Date().toISOString().split("T")[0];
       const response = await apiClient.post<ApiResponse<any>>("/api/attendance/verify", {

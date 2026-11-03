@@ -46,13 +46,13 @@ The backend handles the API, authentication, and database interactions.
    ```bash
    pip install -r requirements.txt
    ```
-4. Create a `.env` file in the `norm-ai-backend` folder:
-   ```env
-   DATABASE_URL=postgresql+asyncpg://norm_admin:NormPass123!@localhost:5432/norm_ai_db
-   SECRET_KEY=generate_a_random_64_character_string_here_for_development
-   ALGORITHM=HS256
-   ACCESS_TOKEN_EXPIRE_MINUTES=1440
+4. Copy the example env file and set a real secret (credentials already match `docker-compose.yml`):
+   ```bash
+   copy .env.example .env      # Mac/Linux: cp .env.example .env
    ```
+   Then replace `SECRET_KEY` with a random string of at least 64 characters, e.g.
+   `python -c "import secrets; print(secrets.token_hex(32))"`.
+   Tokens: access = 15 min, refresh = 7 days.
 5. Run database migrations to create the tables:
    ```bash
    alembic upgrade head
@@ -67,33 +67,17 @@ The backend handles the API, authentication, and database interactions.
 ## 3️⃣ AI Sidecar Setup (Face Recognition)
 The Tauri frontend communicates with a local Python sidecar for face detection and liveness checking (anti-spoofing).
 
-1. The sidecar relies on the **backend's virtual environment**, so ensure it is activated in your terminal.
-2. **Download the Face Models:** Run this script once to download the required `buffalo_l` models and copy them to the sidecar directory:
+1. The sidecar's pinned dependencies (onnxruntime 1.19, insightface 0.7) need **Python 3.11** (they have no Python 3.13 wheels). Use a separate venv, e.g. with [uv](https://docs.astral.sh/uv/):
    ```bash
-   python -c "
-   from insightface.app import FaceAnalysis
-   import shutil, pathlib
-
-   print('Downloading buffalo_l...')
-   app = FaceAnalysis(
-       name='buffalo_l',
-       allowed_modules=['detection', 'recognition'],
-       providers=['CPUExecutionProvider']
-   )
-   app.prepare(ctx_id=-1, det_size=(640, 640))
-
-   # Copy into sidecar/models/buffalo_l/
-   src = pathlib.Path.home() / '.insightface' / 'models' / 'buffalo_l'
-   dst = pathlib.Path(r'../norm-ai-frontend/src-tauri/sidecar/models/buffalo_l')
-   dst.mkdir(parents=True, exist_ok=True)
-   shutil.copytree(str(src), str(dst), dirs_exist_ok=True)
-   print('Models copied to sidecar successfully!')
-   "
+   pip install uv
+   uv venv --python 3.11 norm-ai-backend/.venv-sidecar
+   uv pip install --python norm-ai-backend/.venv-sidecar/Scripts/python.exe -r norm-ai-frontend/src-tauri/sidecar/requirements-sidecar.txt
    ```
-3. **Download the Anti-Spoofing Model:** 
-   - Download `2.7_80x80_MiniFASNetV1SE.onnx` from the [MiniFASNet repository](https://github.com/minivision-ai/Silent-Face-Anti-Spoofing).
-   - Rename it to `minifas_1m.onnx`.
-   - Place it inside `norm-ai-frontend/src-tauri/sidecar/models/`.
+2. **Download the AI models** (InsightFace `buffalo_l` + MiniFASNetV2 ONNX) from the repo root:
+   ```bash
+   norm-ai-backend/.venv-sidecar/Scripts/python scripts/download_models.py
+   ```
+   This places `buffalo_l/` and `minifas_1m.onnx` in `norm-ai-frontend/src-tauri/sidecar/models/`.
 
 ---
 
@@ -120,7 +104,7 @@ uvicorn app.main:app --reload
 **Terminal 2 — AI Sidecar:**
 ```bash
 cd norm-ai-frontend\src-tauri\sidecar
-# Use the python from the backend virtual environment
+# Use the Python 3.11 sidecar venv created in step 3
 ..\..\..\norm-ai-backend\.venv\Scripts\python ai_pipeline.py
 ```
 *(Check `http://127.0.0.1:8765/health` to verify it's running).*
@@ -131,3 +115,16 @@ cd norm-ai-frontend
 npm run tauri dev
 ```
 *(This will launch the desktop window).*
+
+> **Tauri notes:** `tauri.conf.json` declares the sidecar as `externalBin`, so Tauri needs a file named
+> `norm-ai-frontend/src-tauri/sidecar/ai_pipeline-x86_64-pc-windows-msvc.exe` to exist at build time.
+> For development create an empty placeholder (`type nul > ...`); the app logs that the sidecar was not
+> spawned and uses the one you started in Terminal 2. A real PyInstaller-built binary is needed for an installer
+> (not included yet). Building also needs Rust + MSVC Build Tools + WebView2.
+> The liveness model's thresholds can be tuned with the `LIVENESS_THRESHOLD` / `LIVE_CLASS_INDEX` env vars.
+
+## 🧪 Tests
+```bash
+cd norm-ai-backend && .\.venv\Scripts\pytest     # unit + DB integration tests (integration skipped if Postgres is down)
+cd norm-ai-frontend && npx tsc --noEmit && npm run build
+```

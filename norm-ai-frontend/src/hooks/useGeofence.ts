@@ -11,7 +11,7 @@ export function useGeofence() {
   const [ssid, setSsid] = useState<string | null>(null);
   const [isOnCampus, setIsOnCampus] = useState(false);
   const [lastChecked, setLastChecked] = useState<Date>(new Date());
-  const [allowedSsids, setAllowedSsids] = useState<string[]>(["RMKEC", "RMKEC2G"]);
+  const [, setAllowedSsids] = useState<string[]>(["RMKEC", "RMKEC2G"]);
   // Use a ref so checkWifi always reads latest allowed list (avoids stale closure)
   const allowedSsidsRef = useRef<string[]>(["RMKEC", "RMKEC2G"]);
 
